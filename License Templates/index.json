@@ -1,0 +1,11 @@
+{
+  "licenses": [
+    { "id": "mit",          "label": "MIT License",                  "file": "mit.txt" },
+    { "id": "apache",       "label": "Apache License 2.0",           "file": "apache-2.0.txt" },
+    { "id": "gpl3",         "label": "GNU GPL v3",                   "file": "gpl-3.0.txt" },
+    { "id": "bsd3",         "label": "BSD 3-Clause",                 "file": "bsd-3-clause.txt" },
+    { "id": "bsd2",         "label": "BSD 2-Clause",                 "file": "bsd-2-clause.txt" },
+    { "id": "isc",          "label": "ISC License",                  "file": "isc.txt" },
+    { "id": "unlicense",    "label": "The Unlicense (public domain)", "file": "unlicense.txt" }
+  ]
+}

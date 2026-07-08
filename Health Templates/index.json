@@ -1,0 +1,13 @@
+{
+  "files": [
+    { "id": "contributing", "label": "CONTRIBUTING.md",                        "path": "CONTRIBUTING.md",                             "file": "contributing.md" },
+    { "id": "coc",          "label": "CODE_OF_CONDUCT.md",                     "path": "CODE_OF_CONDUCT.md",                          "file": "code-of-conduct.md" },
+    { "id": "security",     "label": "SECURITY.md",                            "path": "SECURITY.md",                                 "file": "security.md" },
+    { "id": "support",      "label": "SUPPORT.md",                             "path": "SUPPORT.md",                                  "file": "support.md" },
+    { "id": "funding",      "label": ".github/FUNDING.yml",                    "path": ".github/FUNDING.yml",                         "file": "funding.yml" },
+    { "id": "bug",          "label": ".github/ISSUE_TEMPLATE/bug_report.md",   "path": ".github/ISSUE_TEMPLATE/bug_report.md",        "file": "bug-report.md" },
+    { "id": "feature",      "label": ".github/ISSUE_TEMPLATE/feature_request.md", "path": ".github/ISSUE_TEMPLATE/feature_request.md", "file": "feature-request.md" },
+    { "id": "pr",           "label": ".github/pull_request_template.md",       "path": ".github/pull_request_template.md",            "file": "pull-request-template.md" },
+    { "id": "citation",     "label": "CITATION.cff",                           "path": "CITATION.cff",                                "file": "citation.cff" }
+  ]
+}

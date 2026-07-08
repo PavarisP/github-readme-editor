@@ -1,0 +1,46 @@
+{
+  "templates": [
+    {
+      "id": "standard",
+      "name": "Standard Project",
+      "description": "A complete README with badges, table of contents, features, install, usage, contributing and license.",
+      "icon": "bi-box",
+      "file": "standard.md"
+    },
+    {
+      "id": "library",
+      "name": "Library / Package",
+      "description": "For an installable package: install, quick start, an API reference table and contributing notes.",
+      "icon": "bi-box-seam",
+      "file": "library.md"
+    },
+    {
+      "id": "cli",
+      "name": "CLI Tool",
+      "description": "For a command-line tool: installation, usage, and tables of commands and options.",
+      "icon": "bi-terminal",
+      "file": "cli.md"
+    },
+    {
+      "id": "webapp",
+      "name": "Web App / Product",
+      "description": "For an app or product: live demo link, screenshot, feature checklist, tech stack and deployment.",
+      "icon": "bi-window",
+      "file": "webapp.md"
+    },
+    {
+      "id": "profile",
+      "name": "GitHub Profile",
+      "description": "A profile README (username/username repo) with intro, social badges, skills and stats card.",
+      "icon": "bi-person-badge",
+      "file": "profile.md"
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal",
+      "description": "A short, no-frills starting point: title, description, install, usage and license.",
+      "icon": "bi-file-text",
+      "file": "minimal.md"
+    }
+  ]
+}

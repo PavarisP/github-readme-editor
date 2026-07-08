@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: {{project}}
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: {{author}}
+version: 1.0.0
+date-released: {{year}}-01-01

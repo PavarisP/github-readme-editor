@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub README Editor</title>
+
+  <!-- Bootstrap + Icons (CDN first, self-hosted fallback if the CDN is unreachable) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        onerror="this.onerror=null;this.href='CSS/vendor/bootstrap.min.css'" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+        onerror="this.onerror=null;this.href='CSS/vendor/bootstrap-icons.min.css'" />
+
+  <!-- Optional preview libraries (CDN first, self-hosted fallback; feature-detected) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css"
+        onerror="this.onerror=null;this.href='CSS/vendor/github.min.css'" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+        onerror="this.onerror=null;this.href='CSS/vendor/katex.min.css'" />
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="CSS/styles.css" />
+</head>
+<body>
+
+  <!-- ============ Top bar ============ -->
+  <nav class="navbar navbar-dark app-navbar px-3">
+    <span class="navbar-brand mb-0 h1">
+      <i class="bi bi-markdown-fill me-2"></i>GitHub README Editor
+    </span>
+    <div class="d-flex align-items-center gap-2">
+      <span id="workspaceLabel" class="text-light small me-2 d-none">
+        <i class="bi bi-folder2-open me-1"></i><span id="workspaceName"></span>
+      </span>
+      <button id="aboutBtn" class="btn btn-sm btn-outline-light" type="button" title="About this project">
+        <i class="bi bi-info-circle"></i>
+      </button>
+      <button id="themeToggle" class="btn btn-sm btn-outline-light" type="button" title="Toggle dark / light theme">
+        <i class="bi bi-moon-stars"></i>
+      </button>
+      <button id="importBtn" class="btn btn-sm btn-outline-light d-none" type="button"
+              title="Import an .html or .md file. Have a Word / RTF / .docx? In Word choose File → Save As → Web Page (.html), then import that file here.">
+        <i class="bi bi-upload me-1"></i>Import
+      </button>
+      <input id="importInput" type="file" accept=".html,.htm,.md,.markdown,text/html,text/markdown" hidden />
+      <div class="btn-group d-none" id="toolsMenuWrap">
+        <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          <i class="bi bi-tools me-1"></i>Tools
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><button class="dropdown-item" id="linkCheckBtn"><i class="bi bi-check2-circle me-2"></i>Check links &amp; lint</button></li>
+          <li><button class="dropdown-item" id="healthBtn"><i class="bi bi-file-earmark-plus me-2"></i>Community health files…</button></li>
+          <li><button class="dropdown-item" id="licenseBtn"><i class="bi bi-balance-scale me-2"></i>Add a LICENSE…</button></li>
+          <li><hr class="dropdown-divider" /></li>
+          <li><button class="dropdown-item" id="loadReadmeBtn"><i class="bi bi-arrow-repeat me-2"></i>Load existing README.md</button></li>
+          <li><button class="dropdown-item" id="publishBtn"><i class="bi bi-github me-2"></i>Publish to GitHub… <span class="badge text-bg-secondary ms-1">advanced</span></button></li>
+        </ul>
+      </div>
+      <button id="previewBtn" class="btn btn-sm btn-outline-light d-none" type="button">
+        <i class="bi bi-eye me-1"></i>Preview
+      </button>
+      <button id="saveBtn" class="btn btn-sm btn-success d-none" type="button">
+        <i class="bi bi-download me-1"></i>Save README.md
+      </button>
+    </div>
+  </nav>
+
+  <!-- ============ Welcome / folder picker screen ============ -->
+  <section id="welcomeScreen" class="welcome-screen">
+    <div class="text-center welcome-card">
+      <i class="bi bi-folder2-open welcome-icon"></i>
+      <h2 class="mt-3">Open your workspace</h2>
+      <p class="text-muted mb-4">
+        Pick the folder that contains your project. We'll list its files so you can
+        link to them or embed images while you write your README.
+      </p>
+      <button id="browseBtn" class="btn btn-primary btn-lg">
+        <i class="bi bi-folder-plus me-2"></i>Browse Workspace Folder
+      </button>
+      <p id="browseHint" class="text-muted small mt-3 mb-0"></p>
+
+      <div class="privacy-note mt-3">
+        <i class="bi bi-shield-lock me-2"></i>
+        <span>
+          <strong>Nothing is uploaded.</strong> Your folder is only read locally, as a reference
+          for linking files and images. This app runs <strong>entirely in your browser</strong>
+          (client-side JavaScript) — no server, no accounts, and your files never leave your computer.
+        </span>
+      </div>
+      <!-- Fallback picker for browsers without the File System Access API -->
+      <input id="fallbackInput" type="file" webkitdirectory directory multiple hidden />
+
+      <!-- Recent projects (populated from storage) -->
+      <div id="recentProjectsWrap" class="recent-projects text-start d-none">
+        <div class="recent-title">
+          <i class="bi bi-clock-history me-1"></i>Recent projects
+        </div>
+        <div id="recentProjectsList" class="recent-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Main editor screen ============ -->
+  <section id="editorScreen" class="editor-screen d-none">
+    <div class="app-layout">
+
+      <!-- Sidebar: projects + workspace file list -->
+      <aside class="sidebar">
+        <!-- Projects section -->
+        <div class="sidebar-section projects-section">
+          <div class="sidebar-header">
+            <span><i class="bi bi-collection me-1"></i>Projects</span>
+            <button id="newProjectBtn" class="btn btn-sm btn-link p-0" title="Open another folder">
+              <i class="bi bi-plus-lg"></i>
+            </button>
+          </div>
+          <div id="projectList" class="project-list"></div>
+        </div>
+
+        <!-- Files section -->
+        <div class="sidebar-section files-section">
+          <div class="sidebar-header">
+            <span><i class="bi bi-files me-1"></i>Workspace Files</span>
+            <button id="refreshFilesBtn" class="btn btn-sm btn-link p-0" title="Re-open current folder">
+              <i class="bi bi-arrow-repeat"></i>
+            </button>
+          </div>
+          <input id="fileSearch" type="text" class="form-control form-control-sm sidebar-search"
+                 placeholder="Filter files…" />
+          <div id="fileTree" class="file-tree"></div>
+          <div class="sidebar-footer text-muted small">
+            Click <i class="bi bi-link-45deg"></i> to insert a link,
+            <i class="bi bi-image"></i> to embed an image, or
+            <i class="bi bi-box-arrow-in-down"></i> to import an <code>.html</code>/<code>.md</code> file.
+            <hr class="my-2" />
+            <i class="bi bi-info-circle me-1"></i>Have a <strong>Word / RTF / .doc / .docx</strong>?
+            Save it as an <strong>.html</strong> file first (in Word: <em>File → Save As → Web Page</em>),
+            then import that <code>.html</code>.
+          </div>
+        </div>
+      </aside>
+
+      <!-- Editor column -->
+      <main class="editor-col">
+        <!-- Editor mode tabs -->
+        <div class="editor-tabs" role="tablist" aria-label="Editor mode">
+          <button id="tabWysiwyg" class="editor-tab active" type="button" role="tab" aria-selected="true">
+            <i class="bi bi-file-richtext me-1"></i>Word Processor
+          </button>
+          <button id="tabRaw" class="editor-tab" type="button" role="tab" aria-selected="false">
+            <i class="bi bi-markdown me-1"></i>Raw Markdown
+          </button>
+        </div>
+
+        <!-- Toolbar -->
+        <div id="toolbar" class="toolbar">
+          <div class="btn-group me-1">
+            <select id="blockFormat" class="form-select form-select-sm toolbar-select" title="Text style">
+              <option value="p">Paragraph</option>
+              <option value="h1">Heading 1</option>
+              <option value="h2">Heading 2</option>
+              <option value="h3">Heading 3</option>
+              <option value="h4">Heading 4</option>
+              <option value="h5">Heading 5</option>
+              <option value="h6">Heading 6</option>
+            </select>
+          </div>
+
+          <div class="btn-group me-1">
+            <button class="btn btn-sm btn-light" data-cmd="bold" title="Bold (Ctrl+B)"><i class="bi bi-type-bold"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="italic" title="Italic (Ctrl+I)"><i class="bi bi-type-italic"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="strikeThrough" title="Strikethrough"><i class="bi bi-type-strikethrough"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="inlineCode" title="Inline code"><i class="bi bi-code"></i></button>
+          </div>
+
+          <div class="btn-group me-1">
+            <button class="btn btn-sm btn-light" data-cmd="insertUnorderedList" title="Bulleted list"><i class="bi bi-list-ul"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="insertOrderedList" title="Numbered list"><i class="bi bi-list-ol"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="taskList" title="Task list"><i class="bi bi-check2-square"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="blockquote" title="Quote"><i class="bi bi-quote"></i></button>
+          </div>
+
+          <div class="btn-group me-1">
+            <button class="btn btn-sm btn-light" data-cmd="codeBlock" title="Code block"><i class="bi bi-code-square"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="link" title="Insert link"><i class="bi bi-link-45deg"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="image" title="Insert image URL"><i class="bi bi-image"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="table" title="Insert table"><i class="bi bi-table"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="hr" title="Divider"><i class="bi bi-hr"></i></button>
+          </div>
+
+          <div class="btn-group me-1">
+            <button class="btn btn-sm btn-light" data-cmd="removeFormat" title="Clear formatting"><i class="bi bi-eraser"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="undo" title="Undo (Ctrl+Z)"><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="redo" title="Redo (Ctrl+Y)"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+
+          <!-- GitHub widgets -->
+          <div class="btn-group me-1">
+            <button id="templatesBtn" class="btn btn-sm btn-light" type="button" title="Start from a ready-made README template"><i class="bi bi-grid-1x2 me-1"></i>Templates</button>
+            <button class="btn btn-sm btn-light" data-cmd="toc" title="Insert Table of Contents from headings"><i class="bi bi-list-nested"></i></button>
+            <button class="btn btn-sm btn-light" data-cmd="emoji" title="Insert emoji"><i class="bi bi-emoji-smile"></i></button>
+            <div class="btn-group">
+              <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" title="Insert GitHub widget">
+                <i class="bi bi-stars me-1"></i>Insert
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" id="insertToolMenu"></ul>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Editor -->
+        <div class="editor-body">
+          <div class="editor-pane-wrap">
+            <div id="editor" class="editor-surface" contenteditable="true" spellcheck="true">
+              <h1>Project Title</h1>
+              <p>Write a short description of your project here. Use the toolbar above to format text just like in a word processor.</p>
+            </div>
+            <textarea id="rawEditor" class="raw-editor d-none" spellcheck="false"
+                      placeholder="# Write or paste Markdown here…"></textarea>
+          </div>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <!-- ============ Preview modal ============ -->
+  <div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-view="rendered" type="button">Rendered</button></li>
+            <li class="nav-item"><button class="nav-link" data-view="source" type="button">Markdown Source</button></li>
+          </ul>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="previewRendered" class="markdown-body"></div>
+          <pre id="previewSource" class="markdown-source d-none"><code></code></pre>
+        </div>
+        <div class="modal-footer">
+          <button id="copyMdBtn" class="btn btn-outline-secondary btn-sm" type="button">
+            <i class="bi bi-clipboard me-1"></i>Copy Markdown
+          </button>
+          <button id="saveHtmlBtn" class="btn btn-outline-secondary btn-sm" type="button">
+            <i class="bi bi-filetype-html me-1"></i>Save as HTML
+          </button>
+          <button id="saveFromPreviewBtn" class="btn btn-success btn-sm" type="button">
+            <i class="bi bi-download me-1"></i>Save README.md
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link/Image insert modal -->
+  <div class="modal fade" id="insertModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="insertModalTitle">Insert Link</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Source chooser -->
+          <div class="mb-3 d-flex gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="insertSource" id="srcRepo" value="repo" checked />
+              <label class="form-check-label" for="srcRepo">
+                <i class="bi bi-folder2-open me-1"></i>From project repo
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="insertSource" id="srcUrl" value="url" />
+              <label class="form-check-label" for="srcUrl">
+                <i class="bi bi-link-45deg me-1"></i><span id="srcUrlLabelText">Enter a URL</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Repo browser pane -->
+          <div id="insertRepoPane" class="mb-3">
+            <input id="insertRepoSearch" type="text" class="form-control form-control-sm mb-2"
+                   placeholder="Filter files in your repo…" />
+            <div id="insertRepoList" class="insert-repo-list"></div>
+            <div id="insertRepoSelected" class="form-text mt-1"></div>
+          </div>
+
+          <!-- URL pane -->
+          <div id="insertUrlPane" class="mb-3 d-none">
+            <label class="form-label" id="insertUrlLabel">URL</label>
+            <input id="insertUrl" type="text" class="form-control" placeholder="https://…" />
+          </div>
+
+          <div class="mb-1">
+            <label class="form-label" id="insertTextLabel">Text</label>
+            <input id="insertText" type="text" class="form-control" placeholder="Link text" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="insertConfirmBtn" type="button" class="btn btn-primary">Insert</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic tool modal (badges, stats, alerts, math, etc.) -->
+  <div class="modal fade" id="toolModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="toolModalTitle">Insert</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="toolForm" class="tool-form"></form>
+          <label class="form-label mt-3 mb-1 small text-muted">Preview</label>
+          <div id="toolPreview" class="markdown-body tool-preview"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="toolInsertBtn" type="button" class="btn btn-primary">Insert</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Emoji picker -->
+  <div class="modal fade" id="emojiModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Insert Emoji</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input id="emojiSearch" type="text" class="form-control form-control-sm mb-2" placeholder="Search emoji…" />
+          <div id="emojiGrid" class="emoji-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Templates gallery -->
+  <div class="modal fade" id="templatesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-grid-1x2 me-2"></i>Start from a template</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">Pick a starting point, then tweak it to fit your project. Choosing one replaces the current document.</p>
+          <div class="templates-layout">
+            <div id="templateList" class="template-list"></div>
+            <div class="template-preview-wrap">
+              <div class="template-preview-label small text-muted mb-1">Preview</div>
+              <div id="templatePreview" class="markdown-body template-preview"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="templateUseBtn" type="button" class="btn btn-primary" disabled>
+            <i class="bi bi-check2 me-1"></i>Use this template
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Community health files -->
+  <div class="modal fade" id="healthModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Community health files</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small">GitHub surfaces these files in its UI. Fill in the details, pick which to create, and they'll be written into your repo.</p>
+          <div class="row g-2 mb-3">
+            <div class="col-md-6"><label class="form-label small mb-0">Project name</label><input id="hfProject" class="form-control form-control-sm" /></div>
+            <div class="col-md-6"><label class="form-label small mb-0">Author</label><input id="hfAuthor" class="form-control form-control-sm" /></div>
+            <div class="col-md-4"><label class="form-label small mb-0">Year</label><input id="hfYear" class="form-control form-control-sm" /></div>
+            <div class="col-md-4"><label class="form-label small mb-0">Contact email</label><input id="hfEmail" class="form-control form-control-sm" placeholder="you@example.com" /></div>
+            <div class="col-md-4"><label class="form-label small mb-0">GitHub username</label><input id="hfGithub" class="form-control form-control-sm" placeholder="octocat" /></div>
+          </div>
+          <div id="healthList" class="health-list"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="healthCreateBtn" type="button" class="btn btn-primary">Create selected files</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- License generator -->
+  <div class="modal fade" id="licenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add a LICENSE</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">License</label>
+            <select id="licenseSelect" class="form-select"></select>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-8"><label class="form-label small mb-0">Author / copyright holder</label><input id="licenseAuthor" class="form-control" /></div>
+            <div class="col-md-4"><label class="form-label small mb-0">Year</label><input id="licenseYear" class="form-control" /></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="licenseCreateBtn" type="button" class="btn btn-primary">Create LICENSE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Publish to GitHub (optional PAT flow) -->
+  <div class="modal fade" id="publishModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-github me-2"></i>Publish to GitHub</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+
+          <!-- Step 1: connect with a token -->
+          <div id="ghConnectPane">
+            <p class="small text-muted mb-2">
+              Push your README straight to a repo — no download, no backend. You'll need a
+              <strong>fine-grained Personal Access Token</strong> with
+              <strong>Contents: Read and write</strong> permission, scoped to the repo(s) you want to publish to.
+            </p>
+            <p class="small mb-2 d-flex gap-3 flex-wrap">
+              <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Create a token on GitHub
+              </a>
+              <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="ghHelpBtn">
+                <i class="bi bi-question-circle me-1"></i>How to get a token
+              </button>
+            </p>
+            <div class="mb-2">
+              <label class="form-label small mb-0">Personal Access Token</label>
+              <input id="ghToken" type="password" class="form-control form-control-sm"
+                     placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="ghRemember" />
+              <label class="form-check-label small" for="ghRemember">
+                Remember on this device
+                <span class="text-muted">(stored in this browser as plain text — leave off on shared computers)</span>
+              </label>
+            </div>
+            <button id="ghConnectBtn" type="button" class="btn btn-primary btn-sm">
+              <i class="bi bi-plug me-1"></i>Connect
+            </button>
+            <div class="privacy-note mt-3">
+              <i class="bi bi-shield-lock me-2"></i>
+              <span class="small">Your token is sent only to <strong>api.github.com</strong> from your browser. It never touches any server of ours — this app has none.</span>
+            </div>
+          </div>
+
+          <!-- Step 2: choose repo + publish -->
+          <div id="ghPublishPane" class="d-none">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <span class="small">Connected as <strong id="ghUserLogin"></strong></span>
+              <button id="ghDisconnectBtn" type="button" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-box-arrow-right me-1"></i>Forget token
+              </button>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-0">Repository</label>
+              <input id="ghRepo" class="form-control form-control-sm" list="ghRepoList"
+                     placeholder="owner/repository" autocomplete="off" spellcheck="false" />
+              <datalist id="ghRepoList"></datalist>
+              <div class="form-text small" id="ghRepoHint">Loading your repos…</div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">Files to publish</label>
+              <div id="ghFileList" class="gh-file-list"></div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">Details <span class="text-muted small">— fill placeholders in LICENSE &amp; community files</span></label>
+              <div class="row g-2">
+                <div class="col-6"><input id="ghdProject" class="form-control form-control-sm" placeholder="Project name" /></div>
+                <div class="col-6"><input id="ghdAuthor" class="form-control form-control-sm" placeholder="Author / copyright holder" /></div>
+                <div class="col-4"><input id="ghdYear" class="form-control form-control-sm" placeholder="Year" /></div>
+                <div class="col-4"><input id="ghdEmail" class="form-control form-control-sm" placeholder="Contact email" /></div>
+                <div class="col-4"><input id="ghdGithub" class="form-control form-control-sm" placeholder="GitHub username" /></div>
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-0">Branch</label>
+              <input id="ghBranch" class="form-control form-control-sm" placeholder="default" spellcheck="false" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-0">Commit message</label>
+              <input id="ghMessage" class="form-control form-control-sm" value="Update project files" />
+            </div>
+            <div class="alert alert-warning py-2 px-3 small d-flex gap-2 mb-2" role="alert">
+              <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+              <span>Publishing <strong>replaces</strong> any file already at these paths in the repo with the version from this app. Files you don't select are left untouched.</span>
+            </div>
+            <div id="ghPublishStatus" class="small mt-2"></div>
+          </div>
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          <button id="ghPublishBtn" type="button" class="btn btn-success btn-sm d-none">
+            <i class="bi bi-cloud-arrow-up me-1"></i>Publish
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How to get a GitHub token (help for the publish flow) -->
+  <div class="modal fade" id="ghHelpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-question-circle me-2"></i>How to get a GitHub token</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted">
+            A <strong>Personal Access Token (PAT)</strong> is like a scoped password that lets this app
+            commit your README to a repo on your behalf. It works entirely from your browser — there's no
+            server involved. Takes about a minute to set up.
+          </p>
+
+          <h6 class="mt-3"><span class="badge text-bg-primary me-2">1</span>Open the token page</h6>
+          <p class="ms-4 small">
+            Go to
+            <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">
+              github.com/settings/personal-access-tokens/new</a>
+            (Or on GitHub: your avatar → <em>Settings → Developer settings → Personal access tokens →
+            Fine-grained tokens → Generate new token</em>.)
+          </p>
+
+          <h6 class="mt-3"><span class="badge text-bg-primary me-2">2</span>Name it &amp; set an expiry</h6>
+          <ul class="ms-4 small">
+            <li><strong>Token name:</strong> anything, e.g. <code>readme-editor</code>.</li>
+            <li><strong>Expiration:</strong> pick whatever you're comfortable with — a short window like 30 days is safest.</li>
+          </ul>
+
+          <h6 class="mt-3"><span class="badge text-bg-primary me-2">3</span>Choose which repos it can touch</h6>
+          <p class="ms-4 small">
+            Under <strong>Repository access</strong>, choose <strong>Only select repositories</strong> and pick the
+            repo(s) you'll publish your README to. This limits the token so it can never touch anything else.
+          </p>
+
+          <h6 class="mt-3"><span class="badge text-bg-primary me-2">4</span>Give it the one permission it needs</h6>
+          <p class="ms-4 small mb-1">
+            Under <strong>Permissions → Repository permissions</strong>, find <strong>Contents</strong> and set it to
+            <strong>Read and write</strong>. Leave everything else as “No access”.
+          </p>
+          <div class="privacy-note ms-4">
+            <i class="bi bi-info-circle me-2"></i>
+            <span class="small"><strong>Contents: Read and write</strong> is the only permission required — it's what lets the app create or update the README file.</span>
+          </div>
+
+          <h6 class="mt-3"><span class="badge text-bg-primary me-2">5</span>Generate &amp; copy</h6>
+          <p class="ms-4 small">
+            Click <strong>Generate token</strong>, then copy it (it starts with <code>github_pat_…</code>).
+            <strong>Copy it now</strong> — GitHub only shows it once.
+          </p>
+
+          <hr />
+
+          <h6><i class="bi bi-arrow-return-left me-2"></i>Then, back in this app</h6>
+          <ol class="small">
+            <li>Paste the token into the <strong>Personal Access Token</strong> box.</li>
+            <li>Optionally tick <strong>Remember on this device</strong> (skip it on shared computers — it's stored as plain text in this browser).</li>
+            <li>Click <strong>Connect</strong> — you should see “Connected as <em>yourname</em>”.</li>
+            <li>Pick your <strong>repository</strong>, leave the path as <code>README.md</code>, and click <strong>Publish</strong>.</li>
+          </ol>
+
+          <div class="privacy-note mt-3">
+            <i class="bi bi-shield-lock me-2"></i>
+            <span class="small">
+              Your token is sent only to <strong>api.github.com</strong> straight from your browser — never to us (this app has no server).
+              You can hit <strong>Forget token</strong> any time, and you can <strong>revoke</strong> it on GitHub under
+              <em>Settings → Developer settings → Fine-grained tokens</em>.
+            </span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Open token page
+          </a>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Got it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link check / lint report -->
+  <div class="modal fade" id="linkCheckModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Links &amp; lint report</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="linkCheckReport"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- About this project -->
+  <div class="modal fade" id="aboutModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-markdown-fill me-2"></i>About GitHub README Editor</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>
+            <strong>GitHub README Editor</strong> is a free, browser-based tool for writing and
+            publishing GitHub README files — with a word-processor-style editor, a live Markdown
+            preview, ready-made templates, badges and widgets, license and community-health file
+            generators, and one-click publishing straight to GitHub.
+          </p>
+
+          <div class="privacy-note">
+            <i class="bi bi-shield-lock me-2"></i>
+            <span>
+              It runs <strong>entirely in your browser</strong> — no server, no accounts, and your
+              files never leave your computer.
+            </span>
+          </div>
+
+          <h6 class="mt-4"><i class="bi bi-github me-2"></i>Source code — free &amp; open</h6>
+          <p class="small mb-2">
+            This project is free to use and its source code is openly available on GitHub. You're
+            welcome to read it, learn from it, and contribute.
+          </p>
+          <a href="https://github.com/PavarisP/GitHub-README-Editor" target="_blank" rel="noopener"
+             class="btn btn-primary btn-sm">
+            <i class="bi bi-github me-1"></i>View source on GitHub
+          </a>
+
+          <h6 class="mt-4"><i class="bi bi-balance-scale me-2"></i>License</h6>
+          <p class="small text-muted mb-2">
+            MIT License + Additional Restrictions — © 2026 Pavaris Pobhirun. Free for personal use
+            and as a component of commercial projects; you may not sell the software itself, and you
+            must credit the author.
+          </p>
+          <pre class="about-license"><code>MIT License + Additional Restrictions
+
+Copyright (c) 2026 Pavaris Pobhirun
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the following conditions:
+
+    Credit/Attribution: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. You must provide clear credit to Pavaris Pobhirun when using this software.
+
+    Non-Profit Restriction: You are strictly prohibited from selling this Software as a standalone product or incorporating it into a paid package/service for direct profit.
+
+    Usage: You are free to use this software for personal projects or as a component within a commercial project, provided that you do not sell the software itself.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</code></pre>
+        </div>
+        <div class="modal-footer">
+          <a href="https://github.com/PavarisP/GitHub-README-Editor" target="_blank" rel="noopener"
+             class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Open repository
+          </a>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay (shown while opening / validating projects) -->
+  <div id="loadingOverlay" class="loading-overlay d-none">
+
+    <div class="loading-box">
+      <div class="spinner-border text-light" role="status" style="width:3rem;height:3rem;">
+        <span class="visually-hidden">Loading…</span>
+      </div>
+      <div id="loadingText" class="loading-text mt-3">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="appToast" class="toast align-items-center text-bg-dark border-0" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastBody"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap bundle (CDN first, self-hosted fallback if the CDN is unreachable) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>window.bootstrap || document.write('<script src="JS/vendor/bootstrap.bundle.min.js"><\/script>');</script>
+
+  <!-- Optional preview libraries (CDN first, self-hosted fallback; feature-detected in app.js) -->
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>window.hljs || document.write('<script src="JS/vendor/highlight.min.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+  <script>window.mermaid || document.write('<script src="JS/vendor/mermaid.min.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script>window.katex || document.write('<script src="JS/vendor/katex.min.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>window.renderMathInElement || document.write('<script src="JS/vendor/auto-render.min.js"><\/script>');</script>
+
+  <!-- App scripts -->
+  <script src="JS/util.js"></script>
+  <script src="JS/templateloader.js"></script>
+  <script src="JS/converter.js"></script>
+  <script src="JS/markdown.js"></script>
+  <script src="JS/snippets.js"></script>
+  <script src="JS/templates.js"></script>
+  <script src="JS/emoji.js"></script>
+  <script src="JS/health.js"></script>
+  <script src="JS/linkcheck.js"></script>
+  <script src="JS/github.js"></script>
+  <script src="JS/storage.js"></script>
+  <script src="JS/filesystem.js"></script>
+  <script src="JS/editor.js"></script>
+  <script src="JS/app.js"></script>
+</body>
+</html>
