@@ -78,7 +78,9 @@
       <button id="browseBtn" class="btn btn-primary btn-lg">
         <i class="bi bi-folder-plus me-2"></i>Browse Workspace Folder
       </button>
-      <p id="browseHint" class="text-muted small mt-3 mb-0"></p>
+      <p id="browseHint" class="text-muted small mt-3 mb-0">
+        When you pick a folder your browser will ask to view or upload files — click Allow or Upload to continue. Your files stay on your computer.
+      </p>
 
       <div class="privacy-note mt-3">
         <i class="bi bi-shield-lock me-2"></i>
@@ -311,6 +313,38 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button id="insertConfirmBtn" type="button" class="btn btn-primary">Insert</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Insert table modal -->
+  <div class="modal fade" id="tableModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Insert Table</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">Choose how many rows and columns to add, then insert the table into your document.</p>
+          <div class="row g-3 align-items-end">
+            <div class="col-6">
+              <label class="form-label small mb-1" for="tableRows">Rows</label>
+              <input id="tableRows" type="number" class="form-control form-control-sm" min="1" max="20" value="2" />
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" for="tableCols">Columns</label>
+              <input id="tableCols" type="number" class="form-control form-control-sm" min="1" max="20" value="2" />
+            </div>
+            <div class="col-12">
+              <div id="tablePreview" class="table-preview p-2 border rounded bg-light"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="tableInsertBtn" type="button" class="btn btn-primary">Insert table</button>
         </div>
       </div>
     </div>

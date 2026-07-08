@@ -76,6 +76,11 @@
     toolForm: document.getElementById("toolForm"),
     toolPreview: document.getElementById("toolPreview"),
     toolModalTitle: document.getElementById("toolModalTitle"),
+    tableModal: document.getElementById("tableModal"),
+    tableRows: document.getElementById("tableRows"),
+    tableCols: document.getElementById("tableCols"),
+    tablePreview: document.getElementById("tablePreview"),
+    tableInsertBtn: document.getElementById("tableInsertBtn"),
     toolInsertBtn: document.getElementById("toolInsertBtn"),
 
     emojiSearch: document.getElementById("emojiSearch"),
@@ -189,29 +194,6 @@
   }
 
   // ---- Folder picking / project creation --------------------------------
-  if (location.protocol === "file:" && !Workspace.state.supportsFS) {
-    // Opened by double-clicking the HTML file. Browsers disable the File System
-    // Access API on file://, which forces the "upload all files" folder popup.
-    el.browseHint.innerHTML =
-      "⚠️ You opened this from a file, so your browser will show an " +
-      '<strong>"Upload all files from …?"</strong> popup — click <strong>Upload</strong> to continue ' +
-      "(nothing is actually sent anywhere). For direct save-back and a cleaner prompt, " +
-      "run <code>start-server.bat</code> (offline) or open the app from a web address " +
-      "such as GitHub Pages, in Chrome or Edge.";
-  } else if (!Workspace.state.supportsFS) {
-    // Fallback picker (e.g. Firefox / Safari): shows the folder-upload confirmation.
-    el.browseHint.innerHTML =
-      "When you pick a folder your browser will ask " +
-      '<strong>"Upload all files from …?"</strong> — click <strong>Upload</strong> to continue. ' +
-      "Despite the wording, your files are read locally in your browser and are " +
-      "<strong>never sent to any server</strong>.";
-  } else {
-    // File System Access API (e.g. Chrome/Edge over http(s) — including GitHub Pages).
-    el.browseHint.innerHTML =
-      "When you pick a folder your browser will ask to <strong>view files</strong> — " +
-      "click <strong>Allow / Edit files</strong> to continue. Your files stay on your computer.";
-  }
-
   el.browseBtn.addEventListener("click", pickNewWorkspace);
   el.newProjectBtn.addEventListener("click", pickNewWorkspace);
   el.refreshFilesBtn.addEventListener("click", pickNewWorkspace);
@@ -458,6 +440,46 @@
     return html + "</tbody></table><p><br></p>";
   }
 
+  function tableDimensions() {
+    const rows = Math.max(1, Math.min(20, parseInt(el.tableRows.value, 10) || 2));
+    const cols = Math.max(1, Math.min(20, parseInt(el.tableCols.value, 10) || 2));
+    return { rows, cols };
+  }
+
+  function updateTablePreview() {
+    const { rows, cols } = tableDimensions();
+    el.tableRows.value = rows;
+    el.tableCols.value = cols;
+    const lines = [];
+    for (let r = 0; r < rows; r++) {
+      const rowCells = [];
+      for (let c = 0; c < cols; c++) rowCells.push("<td></td>");
+      lines.push("<tr>" + rowCells.join("") + "</tr>");
+    }
+    el.tablePreview.innerHTML = "<table class='table table-sm table-bordered mb-0'><thead><tr>" +
+      Array.from({ length: cols }, (_, i) => "<th>H" + (i + 1) + "</th>").join("") +
+      "</tr></thead><tbody>" + lines.join("") + "</tbody></table>";
+  }
+
+  function openTableModal() {
+    Editor.saveSelection();
+    const { rows, cols } = tableDimensions();
+    el.tableRows.value = rows;
+    el.tableCols.value = cols;
+    updateTablePreview();
+    new bootstrap.Modal(el.tableModal).show();
+  }
+
+  el.tableRows.addEventListener("input", updateTablePreview);
+  el.tableCols.addEventListener("input", updateTablePreview);
+  el.tableInsertBtn.addEventListener("click", function () {
+    const { rows, cols } = tableDimensions();
+    const modal = bootstrap.Modal.getInstance(el.tableModal);
+    if (modal) modal.hide();
+    insertGenerated(buildTableHtml(rows, cols));
+    scheduleAutosave();
+  });
+
   // A single debounced saver shared by typing and toolbar actions.
   const scheduleAutosave = Util.debounce(saveCurrentContent, 600);
   el.editor.addEventListener("input", scheduleAutosave);
@@ -695,7 +717,7 @@
 
     if (cmd === "link") return openInsertModal("link");
     if (cmd === "image") return openInsertModal("image");
-    if (cmd === "table") return insertGenerated(buildTableHtml(2, 2));
+    if (cmd === "table") return openTableModal();
     if (cmd === "toc") return insertToc();
     if (cmd === "emoji") return openEmoji();
 
