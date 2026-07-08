@@ -1,20 +1,16 @@
 /*
  * converter.js
- * Converts the editor's HTML (contenteditable DOM) into GitHub-Flavored Markdown.
- * Pure, dependency-free DOM walker. Exposed as window.HtmlToMarkdown.
+ * Converts the editor's HTML (contenteditable DOM) into GitHub-Flavored
+ * Markdown. Built on the battle-tested Turndown library (+ GFM plugin) for
+ * robust handling of arbitrary/messy HTML (pasted Word/Docs content, nested
+ * lists, mixed inline/block, odd whitespace), with custom rules that preserve
+ * this app's Markdown/HTML conventions (alerts, math, task lists, aligned
+ * blocks, data-md-src image paths, …). Exposed as window.HtmlToMarkdown.
+ *
+ * The previous hand-written converter is kept as converter.legacy.js.
  */
 (function () {
   "use strict";
-
-  // Escape characters that would otherwise break inline markdown.
-  function escapeInline(text) {
-    return text.replace(/([\\`*_\[\]<>])/g, "\\$1");
-  }
-
-  // Collapse whitespace the way HTML rendering would (but keep single spaces).
-  function normalizeSpace(text) {
-    return text.replace(/\s+/g, " ");
-  }
 
   // Render a URL for a Markdown link/image destination. Plain URLs are emitted
   // as-is; ones containing spaces or parentheses are wrapped in <...> so the
@@ -23,318 +19,290 @@
     return /[()\s]/.test(url) ? "<" + url.replace(/[<>]/g, "") + ">" : url;
   }
 
-  // ---- Inline rendering -------------------------------------------------
-  // Renders inline content of a node into a markdown string (no block breaks).
-  function renderInline(node) {
-    let out = "";
-    node.childNodes.forEach(function (child) {
-      out += renderInlineNode(child);
+  // ---- Build the Turndown service (once) --------------------------------
+  let service = null;
+
+  function buildService() {
+    const TS = window.TurndownService;
+    if (!TS) return null;
+
+    const s = new TS({
+      headingStyle: "atx",
+      hr: "---",
+      bulletListMarker: "-",
+      codeBlockStyle: "fenced",
+      fence: "```",
+      emDelimiter: "*",
+      strongDelimiter: "**",
+      linkStyle: "inlined",
+      br: "  ",
     });
-    return out;
-  }
 
-  function renderInlineNode(node) {
-    if (node.nodeType === 3) {
-      // text node
-      return escapeInline(normalizeSpace(node.nodeValue));
+    // GFM: strikethrough, tables, task-list checkbox inputs.
+    if (window.turndownPluginGfm && window.turndownPluginGfm.gfm) {
+      s.use(window.turndownPluginGfm.gfm);
     }
-    if (node.nodeType !== 1) return "";
 
-    const tag = node.tagName;
-    switch (tag) {
-      case "BR":
-        return "  \n"; // hard line break
-      case "STRONG":
-      case "B": {
-        const inner = renderInline(node).trim();
-        return inner ? "**" + inner + "**" : "";
-      }
-      case "EM":
-      case "I": {
-        const inner = renderInline(node).trim();
-        return inner ? "*" + inner + "*" : "";
-      }
-      case "DEL":
-      case "S":
-      case "STRIKE": {
-        const inner = renderInline(node).trim();
-        return inner ? "~~" + inner + "~~" : "";
-      }
-      case "SUB":
-        return "<sub>" + renderInline(node) + "</sub>";
-      case "SUP":
-        return "<sup>" + renderInline(node) + "</sup>";
-      case "CODE": {
-        // Inline math is stored as <code data-math="inline">expr</code>.
-        if (node.getAttribute && node.getAttribute("data-math") === "inline") {
-          return "$" + node.textContent + "$";
+    // Protect $…$ / $$…$$ math spans from Turndown's text escaper, so a
+    // subscript like $x_i$ isn't mangled into $x\_i$ (which would break KaTeX
+    // on the way back). Math is emitted verbatim; everything else escapes as
+    // usual. Only affects text that actually contains a $…$ pair.
+    const nativeEscape = s.escape.bind(s);
+    s.escape = function (str) {
+      const spans = [];
+      const stashed = str.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, function (m) {
+        spans.push(m);
+        return "zZmathZz" + (spans.length - 1) + "zZ";
+      });
+      return nativeEscape(stashed).replace(/zZmathZz(\d+)zZ/g, function (_, i) {
+        return spans[+i];
+      });
+    };
+
+    // Keep raw HTML for constructs GitHub renders but Markdown can't express.
+    s.keep(["picture", "sub", "sup", "kbd"]);
+
+    // Strikethrough with the conventional double tilde (GFM plugin emits a
+    // single ~, which is less widely supported).
+    s.addRule("strikethrough", {
+      filter: ["del", "s", "strike"],
+      replacement: function (content) {
+        return content ? "~~" + content + "~~" : "";
+      },
+    });
+
+    // Table cells: escape literal pipes and flatten newlines, so a "|" or a
+    // line break inside a cell doesn't shatter the table (the GFM plugin's
+    // default cell does neither).
+    s.addRule("tableCell", {
+      filter: ["th", "td"],
+      replacement: function (content, node) {
+        // Encode literal pipes as &#124; — both GitHub and markdown-it render
+        // that as "|" inside a cell without splitting it (a "\|" escape is not
+        // understood by markdown-it's table parser and would drop cells).
+        content = content.replace(/\|/g, "&#124;").replace(/\r?\n/g, " ").trim();
+        const prefix = node.previousElementSibling ? " " : "| ";
+        return prefix + content + " |";
+      },
+    });
+
+    // Tighter list formatting than Turndown's default ("-   item" / 4-space
+    // nesting): a single space after the marker and 2-space nested indent, so
+    // the raw Markdown stays clean and diffs stay small.
+    s.addRule("appListItem", {
+      filter: "li",
+      replacement: function (content, node, options) {
+        content = content
+          .replace(/^\n+/, "")
+          .replace(/\n+$/, "\n")
+          .replace(/\n/gm, "\n  ");
+        let prefix = options.bulletListMarker + " ";
+        const parent = node.parentNode;
+        if (parent.nodeName === "OL") {
+          const start = parent.getAttribute("start");
+          const index = Array.prototype.indexOf.call(parent.children, node);
+          prefix = (start ? Number(start) + index : index + 1) + ". ";
         }
-        // inline code — do not escape inside
-        const text = node.textContent;
-        // Choose a fence of backticks longer than any run inside.
-        const longest = (text.match(/`+/g) || []).reduce(
-          (m, s) => Math.max(m, s.length),
-          0
-        );
-        const fence = "`".repeat(longest + 1);
-        const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
-        return fence + pad + text + pad + fence;
-      }
-      case "A": {
-        const href = node.getAttribute("href") || "";
-        const inner = renderInline(node).trim() || href;
-        const title = node.getAttribute("title");
-        const titlePart = title ? ' "' + title + '"' : "";
-        if (!href) return inner;
-        return "[" + inner + "](" + mdUrl(href) + titlePart + ")";
-      }
-      case "IMG": {
-        // Prefer data-md-src: the canonical repo-relative path. The live src may
-        // be a blob: URL used only to display the image locally (see app.js).
+        return prefix + content + (node.nextSibling && !/\n$/.test(content) ? "\n" : "");
+      },
+    });
+
+    // Aligned blocks (<p align>, <div align>) — a very common README pattern for
+    // centered logos, badge rows and back-to-top links. Keep them verbatim.
+    s.addRule("alignedBlock", {
+      filter: function (node) {
+        return (node.nodeName === "P" || node.nodeName === "DIV") && node.getAttribute("align");
+      },
+      replacement: function (_content, node) {
+        return "\n\n" + node.outerHTML.replace(/\s*\n\s*/g, " ").trim() + "\n\n";
+      },
+    });
+
+    // Images: prefer data-md-src (the canonical repo-relative path; the live
+    // src may be a blob: URL used only for local display). Encode tricky URLs.
+    s.addRule("appImage", {
+      filter: "img",
+      replacement: function (_content, node) {
         const src = node.getAttribute("data-md-src") || node.getAttribute("src") || "";
         const alt = node.getAttribute("alt") || "";
         const title = node.getAttribute("title");
         const titlePart = title ? ' "' + title + '"' : "";
         return "![" + alt + "](" + mdUrl(src) + titlePart + ")";
-      }
-      case "SPAN":
-      case "FONT":
-        return renderInline(node);
-      default:
-        // Unknown inline-ish element: render its children.
-        return renderInline(node);
-    }
-  }
-
-  // ---- Block rendering --------------------------------------------------
-  function renderChildrenBlocks(node, indent) {
-    const blocks = [];
-    node.childNodes.forEach(function (child) {
-      const rendered = renderBlockNode(child, indent);
-      if (rendered !== null && rendered !== "") blocks.push(rendered);
+      },
     });
-    return blocks;
-  }
 
-  function renderBlockNode(node, indent) {
-    indent = indent || "";
+    // Links: encode tricky URLs; fall back to the href as text when empty.
+    s.addRule("appLink", {
+      filter: function (node) {
+        return node.nodeName === "A" && node.getAttribute("href");
+      },
+      replacement: function (content, node) {
+        const href = node.getAttribute("href") || "";
+        const title = node.getAttribute("title");
+        const titlePart = title ? ' "' + title + '"' : "";
+        const text = (content || "").trim() || href;
+        return "[" + text + "](" + mdUrl(href) + titlePart + ")";
+      },
+    });
 
-    // Text node directly in a block container -> treat as paragraph text.
-    if (node.nodeType === 3) {
-      const text = escapeInline(normalizeSpace(node.nodeValue));
-      return text.trim() ? text.trim() : null;
-    }
-    if (node.nodeType !== 1) return null;
+    // Inline math stored as <code data-math="inline">expr</code> -> $expr$.
+    s.addRule("inlineMath", {
+      filter: function (node) {
+        return node.nodeName === "CODE" && node.getAttribute("data-math") === "inline";
+      },
+      replacement: function (_content, node) {
+        return "$" + node.textContent + "$";
+      },
+    });
 
-    const tag = node.tagName;
+    // Block math stored as <pre data-math="block"><code>expr</code></pre>.
+    s.addRule("blockMath", {
+      filter: function (node) {
+        return node.nodeName === "PRE" && node.getAttribute("data-math") === "block";
+      },
+      replacement: function (_content, node) {
+        const code = node.querySelector("code") || node;
+        return "\n\n$$\n" + code.textContent.replace(/\n$/, "") + "\n$$\n\n";
+      },
+    });
 
-    switch (tag) {
-      case "H1":
-      case "H2":
-      case "H3":
-      case "H4":
-      case "H5":
-      case "H6": {
-        const level = parseInt(tag.charAt(1), 10);
-        const text = renderInline(node).trim();
-        return "#".repeat(level) + " " + text;
-      }
-
-      case "P":
-      case "DIV": {
-        // Aligned blocks (e.g. <p align="center">) are kept as raw HTML so the
-        // alignment survives — a very common README pattern for centered logos,
-        // badge rows and back-to-top links.
-        const align = node.getAttribute && node.getAttribute("align");
-        if (align) return node.outerHTML.replace(/\n+/g, " ");
-        const text = renderInline(node).trim();
-        return text ? text : null;
-      }
-
-      case "BR":
-        return null;
-
-      case "HR":
-        return "---";
-
-      case "PICTURE":
-        // GitHub supports raw HTML; emit the <picture> block as-is.
-        return node.outerHTML.replace(/\n+/g, "");
-
-      case "DETAILS": {
-        const summaryEl = node.querySelector("summary");
-        const summary = summaryEl ? renderInline(summaryEl).trim() : "Details";
-        const tmp = node.ownerDocument.createElement("div");
-        node.childNodes.forEach(function (c) {
-          if (!(c.nodeType === 1 && c.tagName === "SUMMARY")) tmp.appendChild(c.cloneNode(true));
-        });
-        const content = renderChildrenBlocks(tmp, "").join("\n\n");
-        return "<details>\n<summary>" + summary + "</summary>\n\n" + content + "\n\n</details>";
-      }
-
-      case "BLOCKQUOTE": {
-        const inner = renderChildrenBlocks(node, "").join("\n\n");
-        let lines = inner.split("\n").map((l) => (l ? "> " + l : ">"));
-        // Alert callouts are stored as <blockquote data-alert="NOTE">…</blockquote>.
-        const alert = node.getAttribute && node.getAttribute("data-alert");
-        if (alert) lines = ["> [!" + alert.toUpperCase() + "]"].concat(lines);
-        return lines.join("\n");
-      }
-
-      case "PRE": {
-        // Block math is stored as <pre data-math="block"><code>expr</code></pre>.
-        if (node.getAttribute && node.getAttribute("data-math") === "block") {
-          const expr = (node.querySelector("code") || node).textContent.replace(/\n$/, "");
-          return "$$\n" + expr + "\n$$";
-        }
-        // Code block. Look for a <code> child to read a language class.
+    // Fenced code blocks — read the language from the <code> class
+    // (language-xxx), a <pre class="mermaid"> marker, or the pre's data-lang.
+    s.addRule("appCodeBlock", {
+      filter: function (node) {
+        return node.nodeName === "PRE" && !node.getAttribute("data-math");
+      },
+      replacement: function (_content, node) {
         const codeEl = node.querySelector("code") || node;
         let lang = "";
-        const cls = codeEl.getAttribute && codeEl.getAttribute("class");
-        if (cls) {
-          const m = cls.match(/language-([\w-]+)/);
-          if (m) lang = m[1];
-        }
-        const dataLang = node.getAttribute && node.getAttribute("data-lang");
-        if (!lang && dataLang) lang = dataLang;
+        const cls = (codeEl.getAttribute && codeEl.getAttribute("class")) || "";
+        const m = cls.match(/language-([\w-]+)/);
+        if (m) lang = m[1];
+        const preCls = node.getAttribute("class") || "";
+        if (!lang && /\bmermaid\b/.test(preCls)) lang = "mermaid";
+        if (!lang && node.getAttribute("data-lang")) lang = node.getAttribute("data-lang");
         const code = codeEl.textContent.replace(/\n$/, "");
-        // fence longer than any backtick run inside
-        const longest = (code.match(/`+/g) || []).reduce(
-          (m, s) => Math.max(m, s.length),
-          0
-        );
+        const longest = (code.match(/`+/g) || []).reduce((a, b) => Math.max(a, b.length), 0);
         const fence = "`".repeat(Math.max(3, longest + 1));
-        return fence + lang + "\n" + code + "\n" + fence;
-      }
+        return "\n\n" + fence + lang + "\n" + code + "\n" + fence + "\n\n";
+      },
+    });
 
-      case "UL":
-      case "OL":
-        return renderList(node, indent);
+    // Alert callouts stored as <blockquote data-alert="NOTE">…</blockquote>.
+    s.addRule("alertBlockquote", {
+      filter: function (node) {
+        return node.nodeName === "BLOCKQUOTE" && node.getAttribute("data-alert");
+      },
+      replacement: function (content, node) {
+        const type = node.getAttribute("data-alert").toUpperCase();
+        const inner = content.replace(/^\n+|\n+$/g, "");
+        const body = inner
+          .split("\n")
+          .map(function (l) { return l ? "> " + l : ">"; })
+          .join("\n");
+        return "\n\n> [!" + type + "]\n" + body + "\n\n";
+      },
+    });
 
-      case "TABLE":
-        return renderTable(node);
+    // Alert callouts rendered for preview as <div class="markdown-alert
+    // markdown-alert-note">… — recognised too, so alerts survive a
+    // raw → Word-Processor → raw round-trip (not just the blockquote form).
+    s.addRule("alertDiv", {
+      filter: function (node) {
+        return node.nodeName === "DIV" && /\bmarkdown-alert-(\w+)/.test(node.className || "");
+      },
+      replacement: function (_content, node) {
+        const type = node.className.match(/markdown-alert-(\w+)/)[1].toUpperCase();
+        const tmp = node.ownerDocument.createElement("div");
+        Array.prototype.forEach.call(node.childNodes, function (c) {
+          if (c.nodeType === 1 && c.classList && c.classList.contains("markdown-alert-title")) return;
+          tmp.appendChild(c.cloneNode(true));
+        });
+        const body = s.turndown(tmp).replace(/^\n+|\n+$/g, "");
+        const quoted = body
+          .split("\n")
+          .map(function (l) { return l ? "> " + l : ">"; })
+          .join("\n");
+        return "\n\n> [!" + type + "]\n" + quoted + "\n\n";
+      },
+    });
 
-      default: {
-        // An inline element sitting directly at block level (e.g. a bare
-        // <img> badge, an <a>, or inline math <code>). Render the element
-        // itself, not just its children.
-        const inline = renderInlineNode(node).trim();
-        return inline ? inline : null;
-      }
-    }
+    // <details><summary>…</summary>…</details> — emit with the blank lines
+    // GitHub needs so the body Markdown inside still renders. The body is
+    // converted recursively so its Markdown formatting is preserved.
+    s.addRule("appDetails", {
+      filter: "details",
+      replacement: function (_content, node) {
+        const summaryEl = node.querySelector("summary");
+        const summary = summaryEl ? summaryEl.textContent.trim() : "Details";
+        const tmp = node.ownerDocument.createElement("div");
+        Array.prototype.forEach.call(node.childNodes, function (c) {
+          if (!(c.nodeType === 1 && c.nodeName === "SUMMARY")) tmp.appendChild(c.cloneNode(true));
+        });
+        const body = s.turndown(tmp).trim();
+        return "\n\n<details>\n<summary>" + summary + "</summary>\n\n" + body + "\n\n</details>\n\n";
+      },
+    });
+
+    return s;
   }
 
-  function renderList(listNode, indent) {
-    const ordered = listNode.tagName === "OL";
-    const isTask = listNode.getAttribute("data-type") === "task";
-    const items = [];
-    let index = 1;
-
-    Array.prototype.forEach.call(listNode.children, function (li) {
-      if (li.tagName !== "LI") return;
-
-      // Separate nested lists from the item's own inline content.
-      let inlineParts = "";
-      const nested = [];
-      li.childNodes.forEach(function (child) {
-        if (child.nodeType === 1 && (child.tagName === "UL" || child.tagName === "OL")) {
-          nested.push(child);
-        } else {
-          inlineParts += renderInlineNode(child);
-        }
-      });
-
-      let marker = ordered ? index + "." : "-";
-      let line = inlineParts.trim();
-
-      // Task list support (checkbox)
-      if (isTask || li.getAttribute("data-checked") !== null) {
-        const checked =
-          li.getAttribute("data-checked") === "true" ||
-          (li.querySelector('input[type="checkbox"]') || {}).checked;
-        marker = "- [" + (checked ? "x" : " ") + "]";
-        // strip a leading checkbox char if present
-        line = line.replace(/^\[[ xX]\]\s*/, "");
-      }
-
-      let itemText = indent + marker + " " + line;
-
-      // Render nested lists with deeper indent.
-      nested.forEach(function (nl) {
-        const childIndent = indent + "  ";
-        itemText += "\n" + renderList(nl, childIndent);
-      });
-
-      items.push(itemText);
-      index++;
-    });
-
-    return items.join("\n");
+  function getService() {
+    if (!service) service = buildService();
+    return service;
   }
 
-  function renderTable(tableNode) {
-    const rows = [];
-    const trs = tableNode.querySelectorAll("tr");
-    if (!trs.length) return "";
+  // ---- Pre-processing ---------------------------------------------------
+  // Normalise this app's task-list markup (<ul data-type="task"> /
+  // <li data-checked="…">) into the checkbox-input form the GFM plugin
+  // understands, so task items convert to "- [x] / - [ ]".
+  function normalizeTaskLists(root) {
+    const doc = root.ownerDocument;
+    Array.prototype.forEach.call(root.querySelectorAll("li"), function (li) {
+      const parent = li.parentNode;
+      const isTaskList = parent && parent.getAttribute && parent.getAttribute("data-type") === "task";
+      const hasChecked = li.getAttribute("data-checked") !== null;
+      if (!isTaskList && !hasChecked) return;
+      if (li.querySelector('input[type="checkbox"]')) return; // already has one
 
-    let headerCells = null;
-    const bodyRows = [];
-
-    trs.forEach(function (tr, i) {
-      const cells = Array.prototype.map.call(
-        tr.querySelectorAll("th,td"),
-        function (cell) {
-          return renderInline(cell).trim().replace(/\|/g, "\\|").replace(/\n/g, " ");
-        }
-      );
-      const hasTh = tr.querySelector("th");
-      if (i === 0 || (hasTh && headerCells === null)) {
-        if (headerCells === null) {
-          headerCells = cells;
-          return;
-        }
+      const checked =
+        li.getAttribute("data-checked") === "true" || li.getAttribute("data-checked") === "";
+      if (li.firstChild && li.firstChild.nodeType === 3) {
+        li.firstChild.nodeValue = li.firstChild.nodeValue.replace(/^\s*\[[ xX]\]\s*/, "");
       }
-      bodyRows.push(cells);
+      const input = doc.createElement("input");
+      input.setAttribute("type", "checkbox");
+      if (checked) input.setAttribute("checked", "");
+      li.insertBefore(input, li.firstChild);
     });
-
-    if (!headerCells) {
-      // No header row detected; synthesize an empty header.
-      const colCount = bodyRows.length ? bodyRows[0].length : 0;
-      headerCells = new Array(colCount).fill(" ");
-    }
-
-    const colCount = headerCells.length;
-    const pad = (cells) => {
-      const c = cells.slice();
-      while (c.length < colCount) c.push("");
-      return c.slice(0, colCount);
-    };
-
-    rows.push("| " + pad(headerCells).join(" | ") + " |");
-    rows.push("| " + new Array(colCount).fill("---").join(" | ") + " |");
-    bodyRows.forEach(function (r) {
-      rows.push("| " + pad(r).join(" | ") + " |");
-    });
-
-    return rows.join("\n");
   }
 
   // ---- Public entry -----------------------------------------------------
   function convert(rootEl) {
+    const s = getService();
+
     // Work on a clone so we never mutate the live editor.
     const clone = rootEl.cloneNode(true);
-
-    // Strip editor-only cruft.
-    clone.querySelectorAll("[contenteditable]").forEach(function (n) {
+    Array.prototype.forEach.call(clone.querySelectorAll("[contenteditable]"), function (n) {
       n.removeAttribute("contenteditable");
     });
 
-    const blocks = renderChildrenBlocks(clone, "");
-    let md = blocks.join("\n\n");
+    // No Turndown available (offline + CDN blocked and vendor missing): fall
+    // back to the legacy converter so the app still works.
+    if (!s) {
+      if (window.HtmlToMarkdownLegacy) return window.HtmlToMarkdownLegacy.convert(rootEl);
+      return (clone.textContent || "").trim() + "\n";
+    }
 
-    // Tidy: collapse 3+ newlines, trim trailing spaces on lines, ensure single EOF newline.
+    normalizeTaskLists(clone);
+
+    let md = s.turndown(clone);
+
+    // Tidy: collapse 3+ newlines, trim trailing spaces on lines, normalise the
+    // spacing after a task-list checkbox to a single space, single EOF NL.
     md = md
       .replace(/[ \t]+\n/g, "\n")
+      .replace(/^([ \t]*[-*+] \[[ xX]\])[ \t]+/gm, "$1 ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 

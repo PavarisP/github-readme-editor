@@ -14,7 +14,7 @@
 ## ✨ Features
 
 - **WYSIWYG Editor** — Write your README like a word processor. Bold, italic, headings, lists, tables, code blocks, and more — all with toolbar buttons.
-- **Live Preview** — See your Markdown rendered in real time, side by side with the editor.
+- **Live Preview** — Toggle a live, GitHub-accurate rendered preview side by side with either the Word Processor or Raw Markdown editor.
 - **Raw Markdown Mode** — Switch to plain Markdown editing when you need fine-grained control.
 - **Templates Gallery** — Start from a ready-made template (Standard Project, Library, CLI Tool, Web App, Profile, Minimal).
 - **GitHub Widgets** — Insert badges (shields.io), GitHub stats cards, social links, typing SVGs, visitor counters, star history charts, contributor images, and more.
@@ -77,8 +77,10 @@ Then open `http://localhost:3000` in your browser.
 │   └── styles.css              # Full theme system (light/dark) + layout
 ├── JS/
 │   ├── util.js                 # Shared helpers (escapeHtml, debounce)
-│   ├── converter.js            # HTML → Markdown converter
-│   ├── markdown.js             # Markdown → HTML renderer
+│   ├── converter.js            # HTML → Markdown converter (built on Turndown + GFM)
+│   ├── converter.legacy.js     # Original hand-written HTML → Markdown (graceful fallback)
+│   ├── markdown.js             # Markdown → HTML renderer (built on markdown-it)
+│   ├── markdown.legacy.js      # Original hand-written Markdown → HTML (graceful fallback)
 │   ├── snippets.js             # GitHub widget generators
 │   ├── templates.js            # Template loader
 │   ├── emoji.js                # Emoji data
@@ -88,7 +90,8 @@ Then open `http://localhost:3000` in your browser.
 │   ├── storage.js              # IndexedDB project persistence
 │   ├── filesystem.js           # File System Access API wrapper
 │   ├── editor.js               # WYSIWYG editor engine
-│   └── app.js                  # Main application logic
+│   ├── app.js                  # Main application logic
+│   └── vendor/                 # Vendored third-party libraries (see Acknowledgments)
 ├── Markdown Templates/         # Extensible README templates
 │   ├── index.json              # Template manifest
 │   ├── standard.md
@@ -135,6 +138,42 @@ This app is **entirely client-side JavaScript**. There is no backend server, no 
 1. Create a `.txt` file in `License Templates/` with `{{author}}` and `{{year}}` placeholders
 2. Add an entry to `License Templates/index.json`
 3. Reload the app — it appears in the License picker
+
+## 🙏 Built With & Acknowledgments
+
+This project is 100% client-side and stands on the shoulders of these excellent
+open-source libraries. Each is **vendored locally** in `CSS/vendor/` and
+`JS/vendor/` (loaded from a CDN with an automatic local fallback, so the app
+works fully offline). All are the property of their respective authors and used
+under their own licenses (predominantly MIT).
+
+**Markdown engine**
+
+| Library | Role |
+|---|---|
+| [markdown-it](https://github.com/markdown-it/markdown-it) | Markdown → HTML rendering (live preview) |
+| [markdown-it-footnote](https://github.com/markdown-it/markdown-it-footnote) | Footnote support |
+| [Turndown](https://github.com/mixmark-io/turndown) | HTML → Markdown conversion (Word Processor → Markdown) |
+| [turndown-plugin-gfm](https://github.com/mixmark-io/turndown-plugin-gfm) | GitHub-Flavored Markdown (tables, strikethrough, task lists) |
+
+> Custom conventions (GitHub `> [!NOTE]` alerts, `$…$` math, Mermaid, task
+> lists, `data-md-src` image paths) are layered on top of these libraries via
+> small in-house plugins/rules, so nothing is lost in either direction.
+
+**Rendering & preview**
+
+| Library | Role |
+|---|---|
+| [highlight.js](https://github.com/highlightjs/highlight.js) | Syntax highlighting for code blocks (with its GitHub theme, `CSS/vendor/github.min.css`) |
+| [KaTeX](https://github.com/KaTeX/KaTeX) | LaTeX math rendering |
+| [Mermaid](https://github.com/mermaid-js/mermaid) | Diagrams & flowcharts |
+
+**UI**
+
+| Library | Role |
+|---|---|
+| [Bootstrap](https://github.com/twbs/bootstrap) | Layout & components |
+| [Bootstrap Icons](https://github.com/twbs/icons) | Icon set |
 
 ## 📄 License
 

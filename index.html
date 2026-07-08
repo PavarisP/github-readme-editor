@@ -53,6 +53,8 @@
           <li><hr class="dropdown-divider" /></li>
           <li><button class="dropdown-item" id="loadReadmeBtn"><i class="bi bi-arrow-repeat me-2"></i>Load existing README.md</button></li>
           <li><button class="dropdown-item" id="publishBtn"><i class="bi bi-github me-2"></i>Publish to GitHub… <span class="badge text-bg-secondary ms-1">advanced</span></button></li>
+          <li><hr class="dropdown-divider" /></li>
+          <li><button class="dropdown-item text-danger" id="clearEditorBtn"><i class="bi bi-x-circle me-2"></i>Clear editor</button></li>
         </ul>
       </div>
       <button id="previewBtn" class="btn btn-sm btn-outline-light d-none" type="button">
@@ -149,6 +151,13 @@
           <button id="tabRaw" class="editor-tab" type="button" role="tab" aria-selected="false">
             <i class="bi bi-markdown me-1"></i>Raw Markdown
           </button>
+          <button id="splitPreviewBtn" class="split-toggle" type="button" aria-pressed="false"
+                  title="Toggle live preview side-by-side">
+            <i class="bi bi-layout-split me-1"></i>Live Preview
+          </button>
+          <button id="clearEditorBarBtn" class="tab-action" type="button" title="Clear the editor">
+            <i class="bi bi-x-circle me-1"></i>Clear
+          </button>
         </div>
 
         <!-- Toolbar -->
@@ -218,6 +227,8 @@
             <textarea id="rawEditor" class="raw-editor d-none" spellcheck="false"
                       placeholder="# Write or paste Markdown here…"></textarea>
           </div>
+          <!-- Live side-by-side preview (toggled by the Live Preview button) -->
+          <div id="livePreviewPane" class="live-preview-pane markdown-body d-none" aria-label="Live preview"></div>
         </div>
       </main>
     </div>
@@ -720,11 +731,24 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
   <script>window.katex || document.write('<script src="JS/vendor/katex.min.js"><\/script>');</script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
   <script>window.renderMathInElement || document.write('<script src="JS/vendor/auto-render.min.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.4/dist/turndown.js"></script>
+  <script>window.TurndownService || document.write('<script src="JS/vendor/turndown.min.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
+  <script>window.turndownPluginGfm || document.write('<script src="JS/vendor/turndown-plugin-gfm.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.3.0/dist/markdown-it.min.js"></script>
+  <script>window.markdownit || document.write('<script src="JS/vendor/markdown-it.min.js"><\/script>');</script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
+  <script>window.markdownitFootnote || document.write('<script src="JS/vendor/markdown-it-footnote.min.js"><\/script>');</script>
 
   <!-- App scripts -->
   <script src="JS/util.js"></script>
   <script src="JS/templateloader.js"></script>
+  <!-- *.legacy.js load first as graceful fallbacks; the library-based
+       converter.js (Turndown) and markdown.js (markdown-it) overwrite
+       window.HtmlToMarkdown / window.MarkdownToHtml right after. -->
+  <script src="JS/converter.legacy.js"></script>
   <script src="JS/converter.js"></script>
+  <script src="JS/markdown.legacy.js"></script>
   <script src="JS/markdown.js"></script>
   <script src="JS/snippets.js"></script>
   <script src="JS/templates.js"></script>

@@ -38,6 +38,9 @@
     rawEditor: document.getElementById("rawEditor"),
     tabWysiwyg: document.getElementById("tabWysiwyg"),
     tabRaw: document.getElementById("tabRaw"),
+    editorBody: document.querySelector(".editor-body"),
+    livePreviewPane: document.getElementById("livePreviewPane"),
+    splitPreviewBtn: document.getElementById("splitPreviewBtn"),
     toolbar: document.getElementById("toolbar"),
     blockFormat: document.getElementById("blockFormat"),
 
@@ -87,6 +90,8 @@
     healthBtn: document.getElementById("healthBtn"),
     licenseBtn: document.getElementById("licenseBtn"),
     loadReadmeBtn: document.getElementById("loadReadmeBtn"),
+    clearEditorBtn: document.getElementById("clearEditorBtn"),
+    clearEditorBarBtn: document.getElementById("clearEditorBarBtn"),
     linkCheckReport: document.getElementById("linkCheckReport"),
 
     healthList: document.getElementById("healthList"),
@@ -147,6 +152,7 @@
   let selectedRepoPath = null; // path chosen in the in-modal repo browser
   let currentProjectId = null;
   let activeTab = "wysiwyg";   // "wysiwyg" (Word Processor) | "raw" (Raw Markdown)
+  let livePreviewOn = false;   // live side-by-side rendered preview
   const projectStatus = {}; // id -> 'ok' | 'missing' | 'reconnect'  (transient, not persisted)
 
   // ---- Toast / loading helpers -----------------------------------------
@@ -360,6 +366,7 @@
     }
     showTab(tab);
     saveCurrentContent();
+    if (livePreviewOn) renderLivePreview();
     (tab === "raw" ? el.rawEditor : el.editor).focus();
   }
 
@@ -369,7 +376,35 @@
     showTab("wysiwyg");
     Editor.setHtml(html);
     resolveWorkspaceImages(el.editor);
+    if (livePreviewOn) renderLivePreview();
   }
+
+  // ---- Live side-by-side preview ---------------------------------------
+  // Render the current document (from whichever editor mode is active) into the
+  // preview pane, then run the highlight.js / Mermaid / KaTeX enhancers on it.
+  function renderLivePreview() {
+    el.livePreviewPane.innerHTML = MarkdownToHtml.render(currentMarkdown());
+    resolveWorkspaceImages(el.livePreviewPane);
+    enhancePreview(el.livePreviewPane);
+  }
+  const updateLivePreview = Util.debounce(function () {
+    if (livePreviewOn) renderLivePreview();
+  }, 300);
+
+  el.splitPreviewBtn.addEventListener("click", function () {
+    livePreviewOn = !livePreviewOn;
+    el.livePreviewPane.classList.toggle("d-none", !livePreviewOn);
+    el.editorBody.classList.toggle("split", livePreviewOn);
+    el.splitPreviewBtn.classList.toggle("active", livePreviewOn);
+    el.splitPreviewBtn.setAttribute("aria-pressed", String(livePreviewOn));
+    if (livePreviewOn) renderLivePreview();
+  });
+
+  // execCommand + typing both fire "input" on the contenteditable, so this one
+  // listener covers toolbar formatting, inserts and typing; the textarea covers
+  // Raw-mode typing. Programmatic loads call renderLivePreview() directly above.
+  el.editor.addEventListener("input", updateLivePreview);
+  el.rawEditor.addEventListener("input", updateLivePreview);
 
   // Repo-relative <img> sources (e.g. images/logo.png) can't be loaded by the
   // browser — those files aren't served over HTTP — so images embedded from the
@@ -380,8 +415,12 @@
     if (!container || !Workspace.objectUrlForPath) return;
     const imgs = container.querySelectorAll("img");
     for (const img of imgs) {
-      const canonical = img.getAttribute("data-md-src") || img.getAttribute("src") || "";
-      if (!canonical || /^(https?:|data:|blob:|\/\/|#)/i.test(canonical)) continue;
+      const raw = img.getAttribute("data-md-src") || img.getAttribute("src") || "";
+      if (!raw || /^(https?:|data:|blob:|\/\/|#)/i.test(raw)) continue;
+      // Markdown rendering percent-encodes paths (spaces -> %20); decode so the
+      // path matches the workspace tree / blob-cache keys, which use raw paths.
+      let canonical = raw;
+      try { canonical = decodeURI(raw); } catch (e) { /* malformed %; keep raw */ }
       img.setAttribute("data-md-src", canonical);
       try {
         const url = await Workspace.objectUrlForPath(canonical);
@@ -1639,6 +1678,28 @@
     if (!node) { toast("No README.md found in this folder's root."); return; }
     importFromWorkspace(node);
   });
+
+  // ---- Clear editor ----------------------------------------------------
+  // Empties whichever editor mode is active. Confirms first when there's real
+  // content so it can't wipe work by accident. Wired to both the Tools-menu
+  // item and the button in the editor tab bar.
+  function clearEditor() {
+    if (editorHasRealContent() &&
+        !window.confirm("Clear the editor?\n\nAll current content will be removed. This can't be undone.")) {
+      return;
+    }
+    if (activeTab === "raw") {
+      el.rawEditor.value = "";
+    } else {
+      Editor.setHtml("<p><br></p>");
+    }
+    saveCurrentContent();
+    if (livePreviewOn) renderLivePreview();
+    (activeTab === "raw" ? el.rawEditor : el.editor).focus();
+    toast("Editor cleared.");
+  }
+  el.clearEditorBtn.addEventListener("click", clearEditor);
+  if (el.clearEditorBarBtn) el.clearEditorBarBtn.addEventListener("click", clearEditor);
   function findReadme(tree) {
     if (!tree || !tree.children) return null;
     return tree.children.find((c) => c.kind === "file" && /^readme\.md$/i.test(c.name)) || null;
