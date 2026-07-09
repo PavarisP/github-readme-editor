@@ -520,6 +520,39 @@ body {
   outline: 2px dashed var(--brand);
   outline-offset: -6px;
 }
+/* ---------- Floating table-editing toolbar ---------- */
+.table-tools {
+  position: fixed;
+  z-index: 1030;
+  display: none;
+  gap: 1px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+.table-tools.show { display: inline-flex; }
+.table-tools button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  width: 30px;
+  height: 28px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+.table-tools button:hover { background: var(--hover); color: var(--text); }
+.table-tools button.danger:hover {
+  color: #e5534b;
+  background: color-mix(in srgb, #e5534b 12%, transparent);
+}
+.table-tools .tt-sep { width: 1px; background: var(--border); margin: 3px 2px; }
 /* ---------- Live side-by-side preview ---------- */
 .live-preview-pane {
   flex: 1 1 50%;

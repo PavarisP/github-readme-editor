@@ -1761,6 +1761,9 @@
     }
   });
 
+  // In-place table editing (floating add/remove row & column toolbar).
+  if (window.TableEdit) TableEdit.init(el.editor);
+
   // ---- Boot -------------------------------------------------------------
   async function boot() {
     initTheme();
